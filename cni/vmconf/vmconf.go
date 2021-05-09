@@ -29,6 +29,7 @@
 package vmconf
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -63,7 +64,10 @@ type StaticNetworkConf struct {
 	VMMTU int
 	// VMIPConfig is the ip configuration that callers should configure their VM's internal
 	// primary interface to use.
-	VMIPConfig *current.IPConfig
+	VMIPV4Config *current.IPConfig
+	// VMIPConfig is the ip configuration that callers should configure their VM's internal
+	// primary interface to use.
+	VMIPV6Config *current.IPConfig
 	// VMRoutes are the routes that callers should configure their VM's internal route table
 	// to have
 	VMRoutes []*types.Route
@@ -100,21 +104,21 @@ func (c StaticNetworkConf) IPBootParam() string {
 	// See "ip=" section of kernel linked above for details on each field listed below.
 
 	// client-ip is really just the ip that will be assigned to the primary interface
-	clientIP := c.VMIPConfig.Address.IP.String()
+	clientIP := c.VMIPV4Config.Address.IP.String()
 
 	// don't set nfs server IP
 	const serverIP = ""
 
 	// default gateway for the network; used to generate a corresponding route table entry
-	defaultGateway := c.VMIPConfig.Gateway.String()
+	defaultGateway := c.VMIPV4Config.Gateway.String()
 
 	// subnet mask used to generate a corresponding route table entry for the primary interface
 	// (must be provided in dotted decimal notation)
 	subnetMask := fmt.Sprintf("%d.%d.%d.%d",
-		c.VMIPConfig.Address.Mask[0],
-		c.VMIPConfig.Address.Mask[1],
-		c.VMIPConfig.Address.Mask[2],
-		c.VMIPConfig.Address.Mask[3],
+		c.VMIPV4Config.Address.Mask[0],
+		c.VMIPV4Config.Address.Mask[1],
+		c.VMIPV4Config.Address.Mask[2],
+		c.VMIPV4Config.Address.Mask[3],
 	)
 
 	// the "hostname" field actually just configures a hostname value for DHCP requests, thus no need to set it
@@ -147,6 +151,28 @@ func (c StaticNetworkConf) IPBootParam() string {
 	}, ":")
 }
 
+//
+//
+//
+func (c StaticNetworkConf) IPV6BootParam() string {
+
+	type v6Config struct {
+		IP      string `json:"ipaddress"`
+		Gateway string `json:"gateway"`
+		NetMask int    `json:"netmask"`
+	}
+
+	ones, _ := c.VMIPV6Config.Address.Mask.Size()
+
+	config, _ := json.Marshal(&v6Config{
+		IP:      c.VMIPV6Config.Address.IP.String(),
+		Gateway: c.VMIPV6Config.Gateway.String(),
+		NetMask: ones,
+	})
+
+	return string(config)
+}
+
 // StaticNetworkConfFrom takes the result of a CNI invocation that conforms to the specification
 // in this package's docstring and converts it to a StaticNetworkConf object that the caller
 // can use to configure their VM with.
@@ -169,11 +195,22 @@ func StaticNetworkConfFrom(result types.Result, containerID string) (*StaticNetw
 
 	// find the IP associated with the VM iface
 	vmIPs := internal.InterfaceIPs(currentResult, vmIface.Name, vmIface.Sandbox)
-	if len(vmIPs) != 1 {
-		return nil, errors.Errorf("expected to find 1 IP for vm interface %q, but instead found %+v",
-			vmIface.Name, vmIPs)
+	//if len(vmIPs) != 1 {
+	//	return nil, errors.Errorf("expected to find 1 IP for vm interface %q, but instead found %+v",
+	//		vmIface.Name, vmIPs)
+	//}
+	//vmIP := vmIPs[0]
+
+	var vmIPV4 *current.IPConfig
+	var vmIPV6 *current.IPConfig
+
+	for i, _ := range vmIPs {
+		if vmIPs[i].Version == "4" {
+			vmIPV4 = vmIPs[i]
+		} else if vmIPs[i].Version == "6" {
+			vmIPV6 = vmIPs[i]
+		}
 	}
-	vmIP := vmIPs[0]
 
 	netNS, err := ns.GetNS(tapIface.Sandbox)
 	if err != nil {
@@ -190,7 +227,8 @@ func StaticNetworkConfFrom(result types.Result, containerID string) (*StaticNetw
 		NetNSPath:         tapIface.Sandbox,
 		VMMacAddr:         vmIface.Mac,
 		VMMTU:             tapMTU,
-		VMIPConfig:        vmIP,
+		VMIPV4Config:      vmIPV4,
+		VMIPV6Config:      vmIPV6,
 		VMRoutes:          currentResult.Routes,
 		VMNameservers:     currentResult.DNS.Nameservers,
 		VMDomain:          currentResult.DNS.Domain,

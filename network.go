@@ -147,7 +147,7 @@ func (networkInterfaces NetworkInterfaces) setupNetwork(
 			MacAddress:  vmNetConf.VMMacAddr,
 		}
 
-		if vmNetConf.VMIPConfig != nil {
+		if vmNetConf.VMIPV4Config != nil {
 			if len(vmNetConf.VMNameservers) > 2 {
 				logger.Warnf("more than 2 nameservers provided from CNI result, only the first 2 %+v will be applied",
 					vmNetConf.VMNameservers[:2])
@@ -155,8 +155,17 @@ func (networkInterfaces NetworkInterfaces) setupNetwork(
 			}
 
 			cniNetworkInterface.StaticConfiguration.IPConfiguration = &IPConfiguration{
-				IPAddr:      vmNetConf.VMIPConfig.Address,
-				Gateway:     vmNetConf.VMIPConfig.Gateway,
+				IPAddr:      vmNetConf.VMIPV4Config.Address,
+				Gateway:     vmNetConf.VMIPV4Config.Gateway,
+				Nameservers: vmNetConf.VMNameservers,
+				IfName:      cniNetworkInterface.CNIConfiguration.VMIfName,
+			}
+		}
+
+		if vmNetConf.VMIPV6Config != nil {
+			cniNetworkInterface.IPV6Configuration = &IPConfiguration{
+				IPAddr:      vmNetConf.VMIPV6Config.Address,
+				Gateway:     vmNetConf.VMIPV6Config.Gateway,
 				Nameservers: vmNetConf.VMNameservers,
 				IfName:      cniNetworkInterface.CNIConfiguration.VMIfName,
 			}
@@ -190,7 +199,7 @@ func (networkInterfaces NetworkInterfaces) staticIPInterface() *NetworkInterface
 			continue
 		}
 
-		if iface.StaticConfiguration.IPConfiguration != nil {
+		if iface.StaticConfiguration.IPConfiguration != nil || iface.IPV6Configuration != nil {
 			return &networkInterfaces[i]
 		}
 	}
@@ -206,6 +215,9 @@ type NetworkInterface struct {
 	// StaticConfiguration parameters that will be used to configure the VM's
 	// tap device and internal network for this network interface.
 	StaticConfiguration *StaticNetworkConfiguration
+
+	//
+	IPV6Configuration *IPConfiguration
 
 	// CNIConfiguration that will be used to generate the VM's network namespace,
 	// tap device and internal network for this network interface.
@@ -548,7 +560,7 @@ func (conf IPConfiguration) ipBootParam() string {
 	// the vmconf package already has a function for doing this, just re-use it
 	vmConf := vmconf.StaticNetworkConf{
 		VMNameservers: conf.Nameservers,
-		VMIPConfig: &current.IPConfig{
+		VMIPV4Config: &current.IPConfig{
 			Version: "4",
 			Address: conf.IPAddr,
 			Gateway: conf.Gateway,
@@ -557,4 +569,19 @@ func (conf IPConfiguration) ipBootParam() string {
 	}
 
 	return vmConf.IPBootParam()
+}
+
+func (conf IPConfiguration) ipv6BootParam() string {
+	// the vmconf package already has a function for doing this, just re-use it
+	vmConf := vmconf.StaticNetworkConf{
+		VMNameservers: conf.Nameservers,
+		VMIPV6Config: &current.IPConfig{
+			Version: "6",
+			Address: conf.IPAddr,
+			Gateway: conf.Gateway,
+		},
+		VMIfName: conf.IfName,
+	}
+
+	return vmConf.IPV6BootParam()
 }
