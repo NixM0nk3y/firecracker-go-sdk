@@ -147,6 +147,8 @@ func (networkInterfaces NetworkInterfaces) setupNetwork(
 			MacAddress:  vmNetConf.VMMacAddr,
 		}
 
+		fmt.Printf("vmNetConf: %v", vmNetConf)
+
 		if vmNetConf.VMIPV4Config != nil {
 			if len(vmNetConf.VMNameservers) > 2 {
 				logger.Warnf("more than 2 nameservers provided from CNI result, only the first 2 %+v will be applied",
@@ -164,10 +166,13 @@ func (networkInterfaces NetworkInterfaces) setupNetwork(
 
 		if vmNetConf.VMIPV6Config != nil {
 			cniNetworkInterface.IPV6Configuration = &IPConfiguration{
-				IPAddr:      vmNetConf.VMIPV6Config.Address,
-				Gateway:     vmNetConf.VMIPV6Config.Gateway,
-				Nameservers: vmNetConf.VMNameservers,
-				IfName:      cniNetworkInterface.CNIConfiguration.VMIfName,
+				IPAddr:          vmNetConf.VMIPV6Config.Address,
+				Gateway:         vmNetConf.VMIPV6Config.Gateway,
+				Nameservers:     vmNetConf.VMNameservers,
+				Domain:          vmNetConf.VMDomain,
+				SearchDomains:   vmNetConf.VMSearchDomains,
+				ResolverOptions: vmNetConf.VMResolverOptions,
+				IfName:          cniNetworkInterface.CNIConfiguration.VMIfName,
 			}
 		}
 	}
@@ -535,10 +540,13 @@ func (staticConf StaticNetworkConfiguration) validate() error {
 // wish to use the nameserver settings here will thus typically need to make /etc/resolv.conf
 // a symlink to /proc/net/pnp
 type IPConfiguration struct {
-	IPAddr      net.IPNet
-	Gateway     net.IP
-	Nameservers []string
-	IfName      string
+	IPAddr          net.IPNet
+	Gateway         net.IP
+	Nameservers     []string
+	Domain          string
+	SearchDomains   []string
+	ResolverOptions []string
+	IfName          string
 }
 
 func (ipConf IPConfiguration) validate() error {
@@ -574,7 +582,10 @@ func (conf IPConfiguration) ipBootParam() string {
 func (conf IPConfiguration) ipv6BootParam() string {
 	// the vmconf package already has a function for doing this, just re-use it
 	vmConf := vmconf.StaticNetworkConf{
-		VMNameservers: conf.Nameservers,
+		VMNameservers:     conf.Nameservers,
+		VMDomain:          conf.Domain,
+		VMSearchDomains:   conf.SearchDomains,
+		VMResolverOptions: conf.ResolverOptions,
 		VMIPV6Config: &current.IPConfig{
 			Version: "6",
 			Address: conf.IPAddr,

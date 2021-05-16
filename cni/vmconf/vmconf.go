@@ -157,17 +157,25 @@ func (c StaticNetworkConf) IPBootParam() string {
 func (c StaticNetworkConf) IPV6BootParam() string {
 
 	type v6Config struct {
-		IP      string `json:"ipaddress"`
-		Gateway string `json:"gateway"`
-		NetMask int    `json:"netmask"`
+		IP              string   `json:"ipaddress"`
+		Gateway         string   `json:"gateway"`
+		NetMask         int      `json:"netmask"`
+		Nameservers     []string `json:"nameservers,omitempty"`
+		Domain          string   `json:"domain,omitempty"`
+		SearchDomains   []string `json:"searchdomain,omitempty"`
+		ResolverOptions []string `json:"resolveroptions,omitempty"`
 	}
 
 	ones, _ := c.VMIPV6Config.Address.Mask.Size()
 
 	config, _ := json.Marshal(&v6Config{
-		IP:      c.VMIPV6Config.Address.IP.String(),
-		Gateway: c.VMIPV6Config.Gateway.String(),
-		NetMask: ones,
+		IP:              c.VMIPV6Config.Address.IP.String(),
+		Gateway:         c.VMIPV6Config.Gateway.String(),
+		NetMask:         ones,
+		Nameservers:     c.VMNameservers,
+		Domain:          c.VMDomain,
+		SearchDomains:   c.VMSearchDomains,
+		ResolverOptions: c.VMResolverOptions,
 	})
 
 	return string(config)
